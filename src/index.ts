@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Bot, Context, InlineKeyboard, Keyboard, session, SessionFlavor } from "grammy";
 import { Menu } from "@grammyjs/menu";
 import { hydrateFiles, FileFlavor } from "@grammyjs/files";
@@ -56,6 +57,8 @@ const mainMenu = new Menu<MyContext>("main-menu")
 // ======================
 // Command Handlers
 // ======================
+
+bot.use(mainMenu);
 
 bot.command("start", async (ctx) => {
   await ctx.reply("Welcome to VPN Service! Choose an option:", { 
@@ -310,13 +313,13 @@ function generateConfig(userId: number, users: number): string {
 }
 
 async function handleConfigRequest(ctx: MyContext) {
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findUniqueOrThrow({
     where: { telegramId: ctx.from!.id },
     include: { Subscriptions: true }
   });
 
   // Find most recent active subscription
-  const activeSub = user?.Subscriptions
+  const activeSub = user.Subscriptions
     .filter(sub => sub.expiresAt > new Date())
     .sort((a, b) => b.expiresAt.getTime() - a.expiresAt.getTime())[0];
 
