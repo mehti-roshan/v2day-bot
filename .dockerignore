@@ -1,0 +1,22 @@
+# Ignore node modules to avoid copying them unnecessarily (reinstall inside container)
+node_modules
+
+# Ignore build output folder
+dist
+
+# Ignore local env files
+.env
+
+# Git files/folders
+.git
+.gitignore
+
+# Logs
+logs
+*.log
+
+# OS files
+.DS_Store
+
+# VSCode settings
+.vscode
