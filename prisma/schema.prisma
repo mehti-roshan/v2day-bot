@@ -18,19 +18,19 @@ model User {
   telegramId    Int            @id
   balance       Int            @default(0)
   isAdmin       Boolean        @default(false)
-  receipts      Receipt[]
-  subscriptions Subscription[]
+  Receipts      Receipt[]
+  Subscriptions Subscription[]
 }
 
 model Receipt {
-  id               Int      @id @default(autoincrement())
-  userId           Int
-  user             User     @relation(fields: [userId], references: [telegramId])
-  amount           Int
-  image            String
-  status           ReceiptStatus
-  subscriptionType String?
-  createdAt        DateTime @default(now())
+  id        Int           @id @default(autoincrement())
+  amount    Int
+  image     String
+  status    ReceiptStatus
+  createdAt DateTime      @default(now())
+
+  User   User @relation(fields: [userId], references: [telegramId])
+  userId Int
 }
 
 enum ReceiptStatus {
@@ -40,10 +40,18 @@ enum ReceiptStatus {
 }
 
 model Subscription {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [telegramId])
-  type      String
-  expires   DateTime
+  id     Int @id @default(autoincrement())
+  months Int @db.TinyInt
+  users  Int @db.TinyInt
+
+  expiresAt DateTime
   createdAt DateTime @default(now())
+
+  User   User @relation(fields: [userId], references: [telegramId])
+  userId Int
+}
+
+model Config {
+  id Int @id @default(autoincrement())
+  config String @db.VarChar(4096)
 }
