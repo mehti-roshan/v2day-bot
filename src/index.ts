@@ -313,10 +313,12 @@ function generateConfig(userId: number, users: number): string {
 }
 
 async function handleConfigRequest(ctx: MyContext) {
-  const user = await prisma.user.findUniqueOrThrow({
+  const user = await prisma.user.findUnique({
     where: { telegramId: ctx.from!.id },
     include: { Subscriptions: true }
   });
+
+  if (!user) await ctx.reply('User not found');
 
   // Find most recent active subscription
   const activeSub = user.Subscriptions
