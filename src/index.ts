@@ -60,6 +60,17 @@ const mainMenu = new Menu<MyContext>("main-menu")
 
 bot.use(mainMenu);
 
+bot.use(async (ctx, next) => {
+  if (ctx.from?.id) {
+    await prisma.user.upsert({
+      where: { telegramId: ctx.from.id },
+      create: { telegramId: ctx.from.id },
+      update: {}
+    });
+  }
+  next();
+});
+
 bot.command("start", async (ctx) => {
   await ctx.reply("Welcome to VPN Service! Choose an option:", { 
     reply_markup: mainMenu 
@@ -94,15 +105,15 @@ async function showSubscriptionOptions(ctx: MyContext) {
 
 // Handle "Back to Menu" button
 bot.hears("Back to Menu", async (ctx) => {
-  await ctx.reply("Choose an option:", { 
-    reply_markup: mainMenu 
+  await ctx.reply("Choose an option:", {
+    reply_markup: mainMenu
   });
 });
 
 bot.hears(/1 Month - (\d+) Users? \(\$(\d+)\)/, async (ctx) => {
   const [_, users, price] = ctx.match!;
   const key = users as keyof typeof PRICING;
-  
+
   if (!PRICING[key]) {
     await ctx.reply("Invalid subscription option");
     return;
@@ -168,7 +179,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   const adminUser = await prisma.user.findUnique({
     where: { telegramId: ctx.from!.id }
   });
-  
+
   if (!adminUser?.isAdmin) {
     await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
     return;
@@ -182,7 +193,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   const user = await prisma.user.findUnique({
     where: { telegramId: numericUserId }
   });
-  
+
   if (!user) {
     await ctx.answerCallbackQuery("User not found");
     return;
@@ -190,7 +201,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
 
   // Get pending receipt
   const receipt = await prisma.receipt.findFirst({
-    where: { 
+    where: {
       userId: numericUserId,
       status: ReceiptStatus.PENDING
     },
@@ -211,7 +222,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   // Add funds to user's balance
   const key = users as keyof typeof PRICING;
   const { price } = PRICING[key];
-  
+
   await prisma.user.update({
     where: { telegramId: numericUserId },
     data: { balance: { increment: price } }
@@ -233,17 +244,17 @@ bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
   const adminUser = await prisma.user.findUnique({
     where: { telegramId: ctx.from!.id }
   });
-  
+
   if (!adminUser?.isAdmin) {
     await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
     return;
   }
 
   const userId = parseInt(ctx.match![1]);
-  
+
   // Update all pending receipts for this user
   await prisma.receipt.updateMany({
-    where: { 
+    where: {
       userId,
       status: ReceiptStatus.PENDING
     },
@@ -355,12 +366,12 @@ async function handleAdminPanel(ctx: MyContext) {
 
 // Validate all callback queries have an admin user
 bot.use(async (ctx, next) => {
-  if (ctx.callbackQuery?.data?.startsWith('approve_') || 
-      ctx.callbackQuery?.data?.startsWith('reject_')) {
+  if (ctx.callbackQuery?.data?.startsWith('approve_') ||
+    ctx.callbackQuery?.data?.startsWith('reject_')) {
     const user = await prisma.user.findUnique({
       where: { telegramId: ctx.from!.id }
     });
-    
+
     if (!user?.isAdmin) {
       await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
       return;
