@@ -318,7 +318,7 @@ async function handleConfigRequest(ctx: MyContext) {
     include: { Subscriptions: true }
   });
 
-  if (!user) await ctx.reply('User not found');
+  if (!user) return await ctx.reply('User not found');
 
   // Find most recent active subscription
   const activeSub = user.Subscriptions
