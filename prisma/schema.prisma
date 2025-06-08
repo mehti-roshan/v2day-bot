@@ -16,10 +16,8 @@ datasource db {
 
 model User {
   telegramId    Int            @id
-  balance       Int            @default(0)
   isAdmin       Boolean        @default(false)
   Receipts      Receipt[]
-  Subscriptions Subscription[]
 }
 
 model Receipt {
@@ -37,21 +35,4 @@ enum ReceiptStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-model Subscription {
-  id     Int @id @default(autoincrement())
-  months Int @db.TinyInt
-  users  Int @db.TinyInt
-
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  User   User @relation(fields: [userId], references: [telegramId])
-  userId Int
-}
-
-model Config {
-  id Int @id @default(autoincrement())
-  config String @db.VarChar(4096)
 }

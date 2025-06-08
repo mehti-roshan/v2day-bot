@@ -6,6 +6,9 @@ import { RedisAdapter } from "@grammyjs/storage-redis";
 import redis from "./redis";
 import { ReceiptStatus } from "./generated/prisma";
 import prisma from "./prisma";
+import { z } from "zod";
+import isV2rayConfig from "./utils/isV2rayConfig";
+import { getAllAdmins, getUser } from "./controllers/user.controller";
 
 const storage = new RedisAdapter({ instance: redis });
 
@@ -15,6 +18,10 @@ interface SessionData {
     users: number;
     price: number;
   };
+  pendingSubscriptionAccept?: {
+    receiptId: number;
+    selectedPlanKey: keyof typeof PRICING;
+  }
 }
 
 type MyContext = FileFlavor<Context> & SessionFlavor<SessionData>;
@@ -43,16 +50,12 @@ const BANK_NAME = "Example Bank"; // Replace with actual bank name
 // ======================
 
 const mainMenu = new Menu<MyContext>("main-menu")
-  .text("💰 Buy Subscription", async ctx => {
+  .text("💰 Buy Config", async ctx => {
     await showSubscriptionOptions(ctx);
   })
-  .text("💳 View Balance", async ctx => {
-    const user = await getUser(ctx.from!.id);
-    await ctx.reply(`Current balance: $${user.balance}`);
-  })
-  .text("📡 Get Config", async ctx => {
-    await handleConfigRequest(ctx);
-  });
+// .text("📡 Get Config", async ctx => {
+//   await handleConfigRequest(ctx);
+// });
 
 // ======================
 // Command Handlers
@@ -72,8 +75,8 @@ bot.use(async (ctx, next) => {
 });
 
 bot.command("start", async (ctx) => {
-  await ctx.reply("Welcome to VPN Service! Choose an option:", { 
-    reply_markup: mainMenu 
+  await ctx.reply("Welcome to VPN Service! Choose an option:", {
+    reply_markup: mainMenu
   });
 });
 
@@ -122,23 +125,47 @@ bot.hears(/1 Month - (\d+) Users? \(\$(\d+)\)/, async (ctx) => {
   const user = await getUser(ctx.from!.id);
   const { price: requiredPrice } = PRICING[key];
 
-  if (user.balance >= requiredPrice) {
-    await completeSubscriptionPurchase(ctx, PRICING[key]);
-  } else {
-    ctx.session.pendingSubscription = PRICING[key];
-    await ctx.reply(
-      `Insufficient balance ($${user.balance}). Please send $${requiredPrice} to:\n` +
-      `Bank: ${BANK_NAME}\n` +
-      `Card: ${CARD_NUMBER}\n\n` +
-      "Reply with a photo of your payment receipt.",
-      { reply_markup: { remove_keyboard: true } }
-    );
-  }
+  ctx.session.pendingSubscription = PRICING[key];
+  await ctx.reply(
+    `Please send $${requiredPrice} to:\n` +
+    `Bank: ${BANK_NAME}\n` +
+    `Card: ${CARD_NUMBER}\n\n` +
+    "Reply with a photo of your payment receipt.",
+    { reply_markup: { remove_keyboard: true } }
+  );
 });
 
 // ======================
 // Receipt Handling
 // ======================
+
+bot.on("message", async (ctx) => {
+  if (ctx.session.pendingSubscriptionAccept) {
+    const config = ctx.msg.text;
+    if (!config || !isV2rayConfig(config)) return await ctx.reply('Invalid v2ray config');
+
+    // Update receipt
+    const { userId } = await prisma.receipt.update({
+      where: { id: ctx.session.pendingSubscriptionAccept.receiptId },
+      data: { status: ReceiptStatus.APPROVED },
+      select: { userId: true }
+    });
+
+    // Add funds to user's balance
+    const { users } = PRICING[ctx.session.pendingSubscriptionAccept.selectedPlanKey];
+
+    await ctx.api.sendMessage(
+      userId,
+      `🎉 Config activated!\n` +
+      `👥 Users: ${users}\n\n` +
+      `Your config:\n\n\`${config}\``,
+      { parse_mode: "Markdown" }
+    );
+
+    await ctx.answerCallbackQuery("Payment approved and subscription activated!");
+    await ctx.deleteMessage();
+  }
+});
 
 bot.on("message:photo", async (ctx) => {
   if (ctx.session.pendingSubscription) {
@@ -155,15 +182,15 @@ bot.on("message:photo", async (ctx) => {
     });
 
     // Notify admins
-    const admins = await prisma.user.findMany({ where: { isAdmin: true } });
-    for (const admin of admins) {
-      await ctx.api.sendPhoto(admin.telegramId, file.file_id, {
+    const admins = await getAllAdmins();
+    await Promise.all(admins.map(admin =>
+      ctx.api.sendPhoto(admin.telegramId, file.file_id, {
         caption: `New receipt from ${ctx.from!.id} for $${price} (1 month, ${users} user(s))`,
         reply_markup: new InlineKeyboard()
           .text("✅ Approve", `approve_${ctx.from!.id}_${users}`)
           .text("❌ Reject", `reject_${ctx.from!.id}`)
-      });
-    }
+      })
+    ));
 
     await ctx.reply("Receipt submitted for review. You'll receive your config once approved.");
     ctx.session.pendingSubscription = undefined;
@@ -176,9 +203,7 @@ bot.on("message:photo", async (ctx) => {
 
 bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   // Security: Verify admin status
-  const adminUser = await prisma.user.findUnique({
-    where: { telegramId: ctx.from!.id }
-  });
+  const adminUser = await getUser(ctx.from!.id);
 
   if (!adminUser?.isAdmin) {
     await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
@@ -213,37 +238,16 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
     return;
   }
 
-  // Update receipt
-  await prisma.receipt.update({
-    where: { id: receipt.id },
-    data: { status: ReceiptStatus.APPROVED }
-  });
-
-  // Add funds to user's balance
-  const key = users as keyof typeof PRICING;
-  const { price } = PRICING[key];
-
-  await prisma.user.update({
-    where: { telegramId: numericUserId },
-    data: { balance: { increment: price } }
-  });
-
-  // Complete the subscription purchase
-  await completeSubscriptionPurchase(
-    ctx,
-    { users: numericUsers, price },
-    numericUserId
-  );
-
-  await ctx.answerCallbackQuery("Payment approved and subscription activated!");
-  await ctx.deleteMessage();
+  ctx.session.pendingSubscriptionAccept = {
+    receiptId: receipt.id,
+    selectedPlanKey: users as keyof typeof PRICING
+  };
+  await ctx.answerCallbackQuery('Provide your config string: ');
 });
 
 bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
   // Security: Verify admin status
-  const adminUser = await prisma.user.findUnique({
-    where: { telegramId: ctx.from!.id }
-  });
+  const adminUser = await getUser(ctx.from!.id);
 
   if (!adminUser?.isAdmin) {
     await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
@@ -274,79 +278,6 @@ bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
 // Secure Helper Functions
 // ======================
 
-async function getUser(telegramId: number) {
-  return await prisma.user.upsert({
-    where: { telegramId },
-    create: { telegramId },
-    update: {},
-  });
-}
-
-async function completeSubscriptionPurchase(
-  ctx: MyContext,
-  plan: { users: number; price: number },
-  userId?: number
-) {
-  const targetUserId = userId || ctx.from!.id;
-  const expiresAt = new Date();
-  expiresAt.setMonth(expiresAt.getMonth() + 1); // Always 1 month
-
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { telegramId: targetUserId },
-      data: { balance: { decrement: plan.price } }
-    }),
-    prisma.subscription.create({
-      data: {
-        months: 1, // Fixed to 1 month
-        users: plan.users,
-        expiresAt,
-        userId: targetUserId,
-      }
-    })
-  ]);
-
-  const config = generateConfig(targetUserId, plan.users);
-  await ctx.api.sendMessage(
-    targetUserId,
-    `🎉 Subscription activated!\n` +
-    `📅 Expires: ${expiresAt.toLocaleDateString()}\n` +
-    `👥 Users: ${plan.users}\n\n` +
-    `Your config:\n\n\`${config}\``,
-    { parse_mode: "Markdown" }
-  );
-}
-
-function generateConfig(userId: number, users: number): string {
-  // In production, generate real config with unique credentials
-  const uuid = `user-${userId}-${Date.now()}`;
-  return `vless://${uuid}@vpn.example.com:443?security=tls&sni=vpn.example.com&type=ws&path=/vless#${userId}`;
-}
-
-async function handleConfigRequest(ctx: MyContext) {
-  const user = await prisma.user.findUnique({
-    where: { telegramId: ctx.from!.id },
-    include: { Subscriptions: true }
-  });
-
-  if (!user) return await ctx.reply('User not found');
-
-  // Find most recent active subscription
-  const activeSub = user.Subscriptions
-    .filter(sub => sub.expiresAt > new Date())
-    .sort((a, b) => b.expiresAt.getTime() - a.expiresAt.getTime())[0];
-
-  if (activeSub) {
-    const config = generateConfig(ctx.from!.id, activeSub.users);
-    await ctx.reply(
-      `Your active config (${activeSub.users} users):\n\n\`${config}\``,
-      { parse_mode: "Markdown" }
-    );
-  } else {
-    await ctx.reply("❌ No active subscription found.");
-  }
-}
-
 async function handleAdminPanel(ctx: MyContext) {
   const pendingCount = await prisma.receipt.count({
     where: { status: ReceiptStatus.PENDING }
@@ -368,9 +299,7 @@ async function handleAdminPanel(ctx: MyContext) {
 bot.use(async (ctx, next) => {
   if (ctx.callbackQuery?.data?.startsWith('approve_') ||
     ctx.callbackQuery?.data?.startsWith('reject_')) {
-    const user = await prisma.user.findUnique({
-      where: { telegramId: ctx.from!.id }
-    });
+    const user = await getUser(ctx.from!.id);
 
     if (!user?.isAdmin) {
       await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
