@@ -63,17 +63,6 @@ const mainMenu = new Menu<MyContext>("main-menu")
 
 bot.use(mainMenu);
 
-bot.use(async (ctx, next) => {
-  if (ctx.from?.id) {
-    await prisma.user.upsert({
-      where: { telegramId: ctx.from.id },
-      create: { telegramId: ctx.from.id },
-      update: {}
-    });
-  }
-  next();
-});
-
 bot.command("start", async (ctx) => {
   await ctx.reply("Welcome to VPN Service! Choose an option:", {
     reply_markup: mainMenu
