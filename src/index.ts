@@ -140,34 +140,6 @@ bot.hears(/1 Month - (\d+) Users? \(\$(\d+)\)/, async (ctx) => {
 // ======================
 
 bot.on("message", async (ctx) => {
-  if (ctx.session.pendingSubscriptionAccept) {
-    const config = ctx.msg.text;
-    if (!config || !isV2rayConfig(config)) return await ctx.reply('Invalid v2ray config');
-
-    // Update receipt
-    const { userId } = await prisma.receipt.update({
-      where: { id: ctx.session.pendingSubscriptionAccept.receiptId },
-      data: { status: ReceiptStatus.APPROVED },
-      select: { userId: true }
-    });
-
-    // Add funds to user's balance
-    const { users } = PRICING[ctx.session.pendingSubscriptionAccept.selectedPlanKey];
-
-    await ctx.api.sendMessage(
-      userId,
-      `🎉 Config activated!\n` +
-      `👥 Users: ${users}\n\n` +
-      `Your config:\n\n\`${config}\``,
-      { parse_mode: "Markdown" }
-    );
-
-    await ctx.answerCallbackQuery("Payment approved and subscription activated!");
-    await ctx.deleteMessage();
-  }
-});
-
-bot.on("message:photo", async (ctx) => {
   if (ctx.session.pendingSubscription) {
     const file = await ctx.getFile();
     const { users, price } = ctx.session.pendingSubscription;
@@ -194,6 +166,30 @@ bot.on("message:photo", async (ctx) => {
 
     await ctx.reply("Receipt submitted for review. You'll receive your config once approved.");
     ctx.session.pendingSubscription = undefined;
+  } else if (ctx.session.pendingSubscriptionAccept) {
+    const config = ctx.msg.text;
+    if (!config || !isV2rayConfig(config)) return await ctx.reply('Invalid v2ray config');
+
+    // Update receipt
+    const { userId } = await prisma.receipt.update({
+      where: { id: ctx.session.pendingSubscriptionAccept.receiptId },
+      data: { status: ReceiptStatus.APPROVED },
+      select: { userId: true }
+    });
+
+    // Add funds to user's balance
+    const { users } = PRICING[ctx.session.pendingSubscriptionAccept.selectedPlanKey];
+
+    await ctx.api.sendMessage(
+      userId,
+      `🎉 Config activated!\n` +
+      `👥 Users: ${users}\n\n` +
+      `Your config:\n\n\`${config}\``,
+      { parse_mode: "Markdown" }
+    );
+
+    await ctx.answerCallbackQuery("Payment approved and subscription activated!");
+    await ctx.deleteMessage();
   }
 });
 
