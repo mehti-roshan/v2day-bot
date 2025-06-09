@@ -298,6 +298,8 @@ bot.use(async (ctx, next) => {
 bot.start();
 console.log("Bot is running...");
 
+bot.catch(err => console.error(err));
+
 // Error handling
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
