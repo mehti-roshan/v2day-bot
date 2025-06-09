@@ -36,24 +36,33 @@ bot.use(session({
 
 // Pricing configuration for 1-month plans only
 const PRICING = {
-  '1': { users: 1, price: 10 },
-  '2': { users: 2, price: 18 },
-  '3': { users: 3, price: 25 },
+  '1': { users: 2, price: 150 },
+  '2': { users: 3, price: 190 },
+  '3': { users: 4, price: 230 },
+  '4': { users: Infinity, price: 290 }
+};
+
+// Persian mapping for subscription options
+const PERSIAN_MAPPING: Record<string, keyof typeof PRICING> = {
+  'دو کاربره (150 هزار تومن)': '1',
+  'سه کاربره (190 هزار تومن)': '2',
+  'چهار کاربره (230 هزار تومن)': '3',
+  'کاربر نامحدود (290 هزار تومن)': '4'
 };
 
 // Security constants
 const CARD_NUMBER = "1234 5678 9012 3456"; // Replace with actual card number
-const BANK_NAME = "Example Bank"; // Replace with actual bank name
+const BANK_NAME = "بانک مثال"; // Replace with actual bank name
 
 // ======================
 // Menus
 // ======================
 
 const mainMenu = new Menu<MyContext>("main-menu")
-  .text("💰 Buy Config", async ctx => {
+  .text("💰 خرید کانفیگ", async ctx => {
     await showSubscriptionOptions(ctx);
   })
-// .text("📡 Get Config", async ctx => {
+// .text("📡 دریافت کانفیگ", async ctx => {
 //   await handleConfigRequest(ctx);
 // });
 
@@ -64,7 +73,7 @@ const mainMenu = new Menu<MyContext>("main-menu")
 bot.use(mainMenu);
 
 bot.command("start", async (ctx) => {
-  await ctx.reply("Welcome to VPN Service! Choose an option:", {
+  await ctx.reply("به سرویس VPN خوش آمدید! گزینه ای را انتخاب کنید:", {
     reply_markup: mainMenu
   });
 });
@@ -74,7 +83,7 @@ bot.command("admin", async (ctx) => {
   if (user.isAdmin) {
     await handleAdminPanel(ctx);
   } else {
-    await ctx.reply("⚠️ Unauthorized: Admin access required");
+    await ctx.reply("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
   }
 });
 
@@ -85,41 +94,47 @@ bot.command("admin", async (ctx) => {
 async function showSubscriptionOptions(ctx: MyContext) {
   // FIX: Create keyboard without using .back()
   const keyboard = new Keyboard()
-    .text("1 Month - 1 User ($10)").row()
-    .text("1 Month - 2 Users ($18)").row()
-    .text("1 Month - 3 Users ($25)").row()
-    .text("Back to Menu"); // Add "Back to Menu" as a regular button
+    .text("دو کاربره (150 هزار تومن)").row()
+    .text("سه کاربره (190 هزار تومن)").row()
+    .text("چهار کاربره (230 هزار تومن)").row()
+    .text("کاربر نامحدود (290 هزار تومن)").row()
+    .text("بازگشت به منو");
 
-  await ctx.reply("Choose subscription plan:", {
+  await ctx.reply("پلن اشتراک مورد نظر را انتخاب کنید:", {
     reply_markup: keyboard
   });
 }
 
 // Handle "Back to Menu" button
-bot.hears("Back to Menu", async (ctx) => {
-  await ctx.reply("Choose an option:", {
+bot.hears("بازگشت به منو", async (ctx) => {
+  await ctx.reply("گزینه ای را انتخاب کنید:", {
     reply_markup: mainMenu
   });
 });
 
-bot.hears(/1 Month - (\d+) Users? \(\$(\d+)\)/, async (ctx) => {
-  const [_, users, price] = ctx.match!;
-  const key = users as keyof typeof PRICING;
+// Fixed regex for Persian callbacks
+bot.hears([
+  "دو کاربره (150 هزار تومن)",
+  "سه کاربره (190 هزار تومن)",
+  "چهار کاربره (230 هزار تومن)",
+  "کاربر نامحدود (290 هزار تومن)"
+], async (ctx) => {
+  const text = ctx.msg.text;
+  const key = PERSIAN_MAPPING[text!];
 
-  if (!PRICING[key]) {
-    await ctx.reply("Invalid subscription option");
+  if (!key || !PRICING[key]) {
+    await ctx.reply("گزینه اشتراک نامعتبر است");
     return;
   }
 
-  const user = await getUser(ctx.from!.id);
-  const { price: requiredPrice } = PRICING[key];
-
+  const { users, price } = PRICING[key];
   ctx.session.pendingSubscription = PRICING[key];
+  
   await ctx.reply(
-    `Please send $${requiredPrice} to:\n` +
-    `Bank: ${BANK_NAME}\n` +
-    `Card: ${CARD_NUMBER}\n\n` +
-    "Reply with a photo of your payment receipt.",
+    `لطفا مبلغ ${price} هزار تومان را به شماره کارت زیر واریز کنید:\n` +
+    `بانک: ${BANK_NAME}\n` +
+    `شماره کارت: ${CARD_NUMBER}\n\n` +
+    "پس از پرداخت، عکس فیش واریزی را ارسال کنید.",
     { reply_markup: { remove_keyboard: true } }
   );
 });
@@ -146,18 +161,18 @@ bot.on("message", async (ctx) => {
     const admins = await getAllAdmins();
     await Promise.all(admins.map(admin =>
       ctx.api.sendPhoto(admin.telegramId, file.file_id, {
-        caption: `New receipt from ${ctx.from!.id} for $${price} (1 month, ${users} user(s))`,
+        caption: `رسید جدید از کاربر ${ctx.from!.id} برای مبلغ ${price} هزار تومان (1 ماهه، ${users} کاربر)`,
         reply_markup: new InlineKeyboard()
-          .text("✅ Approve", `approve_${ctx.from!.id}_${users}`)
-          .text("❌ Reject", `reject_${ctx.from!.id}`)
+          .text("✅ تایید", `approve_${ctx.from!.id}_${users}`)
+          .text("❌ رد", `reject_${ctx.from!.id}`)
       })
     ));
 
-    await ctx.reply("Receipt submitted for review. You'll receive your config once approved.");
+    await ctx.reply("رسید پرداخت برای بررسی ارسال شد. پس از تایید، کانفیگ خود را دریافت خواهید کرد.");
     ctx.session.pendingSubscription = undefined;
   } else if (ctx.session.pendingSubscriptionAccept) {
     const config = ctx.msg.text;
-    if (!config || !isV2rayConfig(config)) return await ctx.reply('Invalid v2ray config');
+    if (!config || !isV2rayConfig(config)) return await ctx.reply('کانفیگ v2ray نامعتبر است');
 
     // Update receipt
     const { userId } = await prisma.receipt.update({
@@ -171,13 +186,13 @@ bot.on("message", async (ctx) => {
 
     await ctx.api.sendMessage(
       userId,
-      `🎉 Config activated!\n` +
-      `👥 Users: ${users}\n\n` +
-      `Your config:\n\n\`${config}\``,
+      `🎉 کانفیگ فعال شد!\n` +
+      `👥 تعداد کاربران: ${users}\n\n` +
+      `کانفیگ شما:\n\n\`${config}\``,
       { parse_mode: "Markdown" }
     );
 
-    await ctx.reply("Payment approved and config sent!");
+    await ctx.reply("پرداخت تایید و کانفیگ ارسال شد!");
   }
 });
 
@@ -190,7 +205,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   const adminUser = await getUser(ctx.from!.id);
 
   if (!adminUser?.isAdmin) {
-    await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
+    await ctx.answerCallbackQuery("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
     return;
   }
 
@@ -204,7 +219,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   });
 
   if (!user) {
-    await ctx.answerCallbackQuery("User not found");
+    await ctx.answerCallbackQuery("کاربر یافت نشد");
     return;
   }
 
@@ -218,7 +233,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
   });
 
   if (!receipt) {
-    await ctx.answerCallbackQuery("No pending receipt found");
+    await ctx.answerCallbackQuery("هیچ رسید در حال انتظاری یافت نشد");
     return;
   }
 
@@ -226,7 +241,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
     receiptId: receipt.id,
     selectedPlanKey: users as keyof typeof PRICING
   };
-  await ctx.answerCallbackQuery('Provide your config string: ');
+  await ctx.answerCallbackQuery('رشته کانفیگ خود را وارد کنید: ');
 });
 
 bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
@@ -234,7 +249,7 @@ bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
   const adminUser = await getUser(ctx.from!.id);
 
   if (!adminUser?.isAdmin) {
-    await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
+    await ctx.answerCallbackQuery("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
     return;
   }
 
@@ -251,10 +266,10 @@ bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
 
   await ctx.api.sendMessage(
     userId,
-    "⚠️ Your payment was rejected. Please contact support if you believe this was a mistake."
+    "⚠️ پرداخت شما رد شد. در صورتی که این خطا می‌باشد با پشتیبانی تماس بگیرید."
   );
 
-  await ctx.answerCallbackQuery("Payment rejected!");
+  await ctx.answerCallbackQuery("پرداخت رد شد!");
   await ctx.deleteMessage();
 });
 
@@ -267,10 +282,10 @@ async function handleAdminPanel(ctx: MyContext) {
     where: { status: ReceiptStatus.PENDING }
   });
 
-  await ctx.reply(`🔒 Admin Panel\nPending receipts: ${pendingCount}`, {
+  await ctx.reply(`🔒 پنل ادمین\nتعداد رسیدهای در انتظار: ${pendingCount}`, {
     reply_markup: new Keyboard()
-      .text("📝 View Pending Receipts")
-      .text("📊 Stats")
+      .text("📝 مشاهده رسیدهای در انتظار")
+      .text("📊 آمار")
       .resized()
   });
 }
@@ -286,7 +301,7 @@ bot.use(async (ctx, next) => {
     const user = await getUser(ctx.from!.id);
 
     if (!user?.isAdmin) {
-      await ctx.answerCallbackQuery("⚠️ Unauthorized: Admin access required");
+      await ctx.answerCallbackQuery("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
       return;
     }
   }
