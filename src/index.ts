@@ -177,8 +177,7 @@ bot.on("message", async (ctx) => {
       { parse_mode: "Markdown" }
     );
 
-    await ctx.answerCallbackQuery("Payment approved and subscription activated!");
-    await ctx.deleteMessage();
+    await ctx.reply("Payment approved and config sent!");
   }
 });
 
