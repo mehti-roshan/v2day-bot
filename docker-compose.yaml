@@ -1,4 +1,21 @@
 services:
+  bot:
+    container_name: bot
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    networks:
+      - app-net
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - generated_prisma:/app/src/generated/prisma
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - REDIS_HOST=redis
+      - DATABASE_URL=mysql://root:${DB_PASSWORD}@database:3306/app
+
   redis:
     container_name: redis
     restart: unless-stopped
@@ -15,10 +32,14 @@ services:
     networks:
       - app-net
     ports:
-      - "5432:3306"
+      - "3306:3306"
     environment:
       - MARIADB_ROOT_PASSWORD=${DB_PASSWORD}
       - MARIADB_DATABASE=app
 
 networks:
   app-net:
+
+volumes:
+  node_modules:
+  generated_prisma:
