@@ -36,6 +36,8 @@ services:
     environment:
       - MARIADB_ROOT_PASSWORD=${DB_PASSWORD}
       - MARIADB_DATABASE=app
+    volumes:
+      - db_data:/var/lib/mysql
 
 networks:
   app-net:
@@ -43,3 +45,4 @@ networks:
 volumes:
   node_modules:
   generated_prisma:
+  db_data:
