@@ -8,6 +8,7 @@ import { ReceiptStatus } from "./generated/prisma";
 import prisma from "./prisma";
 import isV2rayConfig from "./utils/isV2rayConfig";
 import { getAllAdmins, getUser } from "./controllers/user.controller";
+import env from "./env";
 
 const storage = new RedisAdapter({ instance: redis });
 
@@ -62,10 +63,6 @@ const PERSIAN_MAPPING: Record<string, keyof typeof PRICING> = {
   'چهار کاربره (230 هزار تومن)': '3',
   'کاربر نامحدود (290 هزار تومن)': '4'
 };
-
-// Security constants
-const CARD_NUMBER = "1234 5678 9012 3456"; // Replace with actual card number
-const BANK_NAME = "بانک مثال"; // Replace with actual bank name
 
 // ======================
 // Menus
@@ -145,8 +142,8 @@ bot.hears([
   
   await ctx.reply(
     `لطفا مبلغ ${price} هزار تومان را به شماره کارت زیر واریز کنید:\n` +
-    `بانک: ${BANK_NAME}\n` +
-    `شماره کارت: ${CARD_NUMBER}\n\n` +
+    `بانک: ${env.BANK_NAME}\n` +
+    `شماره کارت: ${env.CARD_NUMBER}\n\n` +
     "پس از پرداخت، عکس فیش واریزی را ارسال کنید.",
     { reply_markup: { remove_keyboard: true } }
   );
