@@ -296,9 +296,10 @@ async function handleAdminPanel(ctx: MyContext) {
 
 // Validate all callback queries have an admin user
 bot.use(async (ctx, next) => {
+  const user = await getUser(ctx.from!.id);
+  
   if (ctx.callbackQuery?.data?.startsWith('approve_') ||
     ctx.callbackQuery?.data?.startsWith('reject_')) {
-    const user = await getUser(ctx.from!.id);
 
     if (!user?.isAdmin) {
       await ctx.answerCallbackQuery("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
