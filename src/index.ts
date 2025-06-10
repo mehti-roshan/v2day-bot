@@ -33,6 +33,20 @@ bot.use(session({
   storage,
 }));
 
+// Validate all callback queries have an admin user
+bot.use(async (ctx, next) => {
+  const user = await getUser(ctx.from!.id);
+  
+  if (ctx.callbackQuery?.data?.startsWith('approve_') ||
+    ctx.callbackQuery?.data?.startsWith('reject_')) {
+    if (!user?.isAdmin) {
+      await ctx.answerCallbackQuery("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
+      return;
+    }
+  }
+  await next();
+});
+
 // Pricing configuration for 1-month plans only
 const PRICING = {
   '1': { users: 2, price: 150 },
@@ -288,24 +302,6 @@ async function handleAdminPanel(ctx: MyContext) {
       .resized()
   });
 }
-
-// ======================
-// Security Enhancements
-// ======================
-
-// Validate all callback queries have an admin user
-bot.use(async (ctx, next) => {
-  const user = await getUser(ctx.from!.id);
-  
-  if (ctx.callbackQuery?.data?.startsWith('approve_') ||
-    ctx.callbackQuery?.data?.startsWith('reject_')) {
-    if (!user?.isAdmin) {
-      await ctx.answerCallbackQuery("⚠️ دسترسی غیرمجاز: دسترسی ادمین مورد نیاز است");
-      return;
-    }
-  }
-  await next();
-});
 
 // Start the bot
 bot.start();
