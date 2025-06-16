@@ -150,6 +150,31 @@ bot.hears([
   );
 });
 
+bot.hears("📝 مشاهده رسیدهای در انتظار", async (ctx) => {
+  // Handle pending receipts here
+  const receipts = await prisma.receipt.findMany({
+    where: { status: "PENDING" }
+  });
+
+  if (!receipts.length) {
+    await ctx.reply("رسید در انتظار وجود ندارد");
+    return;
+  }
+
+  await Promise.all(receipts.map(async receipt => 
+    await ctx.api.sendPhoto(ctx.from!.id, receipt.image, {
+      caption: `رسید از کاربر ${receipt.userId} برای مبلغ ${receipt.amount}`,
+      reply_markup: new InlineKeyboard()
+        .text("✅ تایید", `approve_${receipt.userId}`)
+        .text("❌ رد", `reject_${receipt.userId}`)
+    })
+  ));
+});
+
+bot.hears("📊 آمار", async (ctx) => {
+  await ctx.reply("TODO");
+});
+
 // ======================
 // Receipt Handling
 // ======================
@@ -286,32 +311,6 @@ async function handleAdminPanel(ctx: MyContext) {
       .resized()
   });
 }
-
-bot.hears("📝 مشاهده رسیدهای در انتظار", async (ctx) => {
-  // Handle pending receipts here
-  const receipts = await prisma.receipt.findMany({
-    where: { status: "PENDING" }
-  });
-
-  if (!receipts.length) {
-    await ctx.reply("رسید در انتظار وجود ندارد");
-    return;
-  }
-
-  await Promise.all(receipts.map(async receipt => 
-    await ctx.api.sendPhoto(ctx.from!.id, receipt.image, {
-      caption: `رسید از کاربر ${receipt.userId} برای مبلغ ${receipt.amount}`,
-      reply_markup: new InlineKeyboard()
-        .text("✅ تایید", `approve_${receipt.userId}`)
-        .text("❌ رد", `reject_${receipt.userId}`)
-    })
-  ));
-});
-
-bot.hears("📊 آمار", async (ctx) => {
-  await ctx.reply("TODO");
-});
-
 
 // Start the bot
 bot.start();
