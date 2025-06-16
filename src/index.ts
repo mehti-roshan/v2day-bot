@@ -165,8 +165,8 @@ bot.hears("📝 مشاهده رسیدهای در انتظار", async (ctx) => {
     await ctx.api.sendPhoto(ctx.from!.id, receipt.image, {
       caption: `رسید از کاربر ${receipt.userId} برای مبلغ ${receipt.amount}`,
       reply_markup: new InlineKeyboard()
-        .text("✅ تایید", `approve_${receipt.userId}`)
-        .text("❌ رد", `reject_${receipt.userId}`)
+        .text("✅ تایید", `approve_${receipt.id}`)
+        .text("❌ رد", `reject_${receipt.id}`)
     })
   ));
 });
@@ -274,7 +274,7 @@ bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
 
   if (!await prisma.receipt.findUnique({ where: { id: receiptId, status: ReceiptStatus.PENDING } })) {
     await ctx.answerCallbackQuery("پرداخت قبلا رد شده یا پیدا نشد!");
-  await ctx.deleteMessage();
+    await ctx.deleteMessage();
     return;
   }
   // Update all pending receipts for this user
