@@ -20,7 +20,6 @@ interface SessionData {
   };
   pendingSubscriptionAccept?: {
     receiptId: number;
-    selectedPlanKey: keyof typeof PRICING;
   }
 }
 
@@ -37,7 +36,7 @@ bot.use(session({
 // Validate all callback queries have an admin user
 bot.use(async (ctx, next) => {
   const user = await getUser(ctx.from!.id);
-  
+
   if (ctx.callbackQuery?.data?.startsWith('approve_') ||
     ctx.callbackQuery?.data?.startsWith('reject_')) {
     if (!user?.isAdmin) {
@@ -139,7 +138,7 @@ bot.hears([
 
   const { users, price } = PRICING[key];
   ctx.session.pendingSubscription = PRICING[key];
-  
+
   await ctx.reply(
     `لطفا مبلغ ${price} هزار تومان را به شماره کارت زیر واریز کنید:\n` +
     `بانک: ${env.BANK_NAME}\n` +
@@ -160,7 +159,7 @@ bot.on("message", async (ctx) => {
     const file = await ctx.getFile();
     const { users, price } = ctx.session.pendingSubscription;
 
-    await prisma.receipt.create({
+    const { id: receiptId } = await prisma.receipt.create({
       data: {
         amount: price,
         image: file.file_id,
@@ -175,8 +174,8 @@ bot.on("message", async (ctx) => {
       ctx.api.sendPhoto(admin.telegramId, file.file_id, {
         caption: `رسید جدید از کاربر ${ctx.from!.id} برای مبلغ ${price} هزار تومان (1 ماهه، ${users} کاربر)`,
         reply_markup: new InlineKeyboard()
-          .text("✅ تایید", `approve_${ctx.from!.id}_${users}`)
-          .text("❌ رد", `reject_${ctx.from!.id}`)
+          .text("✅ تایید", `approve_${receiptId}`)
+          .text("❌ رد", `reject_${receiptId}`)
       })
     ));
 
@@ -193,13 +192,9 @@ bot.on("message", async (ctx) => {
       select: { userId: true }
     });
 
-    // Add funds to user's balance
-    const { users } = PRICING[ctx.session.pendingSubscriptionAccept.selectedPlanKey];
-
     await ctx.api.sendMessage(
       userId,
       `🎉 کانفیگ فعال شد!\n` +
-      `👥 تعداد کاربران: ${users}\n\n` +
       `کانفیگ شما:\n\n\`${config}\``,
       { parse_mode: "Markdown" }
     );
@@ -212,7 +207,7 @@ bot.on("message", async (ctx) => {
 // Admin Approval Flow with Security Checks
 // ======================
 
-bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
+bot.callbackQuery(/approve_(\d+)/, async (ctx) => {
   // Security: Verify admin status
   const adminUser = await getUser(ctx.from!.id);
 
@@ -221,27 +216,15 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
     return;
   }
 
-  const [_, userId, users] = ctx.match!;
-  const numericUserId = parseInt(userId);
-  const numericUsers = parseInt(users);
-
-  // Verify valid user
-  const user = await prisma.user.findUnique({
-    where: { telegramId: numericUserId }
-  });
-
-  if (!user) {
-    await ctx.answerCallbackQuery("کاربر یافت نشد");
-    return;
-  }
+  const [_, stringReceiptId] = ctx.match!;
+  const receiptId = parseInt(stringReceiptId);
 
   // Get pending receipt
-  const receipt = await prisma.receipt.findFirst({
+  const receipt = await prisma.receipt.findUnique({
     where: {
-      userId: numericUserId,
+      id: receiptId,
       status: ReceiptStatus.PENDING
-    },
-    orderBy: { createdAt: 'desc' }
+    }
   });
 
   if (!receipt) {
@@ -249,10 +232,7 @@ bot.callbackQuery(/approve_(\d+)_(\d+)/, async (ctx) => {
     return;
   }
 
-  ctx.session.pendingSubscriptionAccept = {
-    receiptId: receipt.id,
-    selectedPlanKey: users as keyof typeof PRICING
-  };
+  ctx.session.pendingSubscriptionAccept = { receiptId: receipt.id };
   await ctx.answerCallbackQuery('رشته کانفیگ خود را وارد کنید: ');
 });
 
@@ -265,12 +245,17 @@ bot.callbackQuery(/reject_(\d+)/, async (ctx) => {
     return;
   }
 
-  const userId = parseInt(ctx.match![1]);
+  const receiptId = parseInt(ctx.match![1]);
 
+  if (!await prisma.receipt.findUnique({ where: { id: receiptId, status: ReceiptStatus.PENDING } })) {
+    await ctx.answerCallbackQuery("پرداخت قبلا رد شده یا پیدا نشد!");
+  await ctx.deleteMessage();
+    return;
+  }
   // Update all pending receipts for this user
-  await prisma.receipt.updateMany({
+  const { userId } = await prisma.receipt.update({
     where: {
-      userId,
+      id: receiptId,
       status: ReceiptStatus.PENDING
     },
     data: { status: ReceiptStatus.REJECTED }
@@ -301,6 +286,32 @@ async function handleAdminPanel(ctx: MyContext) {
       .resized()
   });
 }
+
+bot.hears("📝 مشاهده رسیدهای در انتظار", async (ctx) => {
+  // Handle pending receipts here
+  const receipts = await prisma.receipt.findMany({
+    where: { status: "PENDING" }
+  });
+
+  if (!receipts.length) {
+    await ctx.reply("رسید در انتظار وجود ندارد");
+    return;
+  }
+
+  await Promise.all(receipts.map(async receipt => 
+    await ctx.api.sendPhoto(ctx.from!.id, receipt.image, {
+      caption: `رسید از کاربر ${receipt.userId} برای مبلغ ${receipt.amount}`,
+      reply_markup: new InlineKeyboard()
+        .text("✅ تایید", `approve_${receipt.userId}`)
+        .text("❌ رد", `reject_${receipt.userId}`)
+    })
+  ));
+});
+
+bot.hears("📊 آمار", async (ctx) => {
+  await ctx.reply("TODO");
+});
+
 
 // Start the bot
 bot.start();
